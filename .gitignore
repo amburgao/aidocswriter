@@ -1,0 +1,8 @@
+out
+dist
+node_modules
+.vscode-test/
+*.vsix
+main/__init__.py
+main/main.py
+.vscode/

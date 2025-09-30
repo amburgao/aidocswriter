@@ -1,0 +1,66 @@
+{
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "categories": [
+    "Programming Languages",
+    "AI"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aidocswriter.generateDocstring",
+        "title": "Python Docstring AI: Generate Docstring"
+      }
+    ],
+    "configuration": {
+      "properties": {
+        "aidocswriter.apiEndpoint": {
+          "default": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+          "description": "The API endpoint for the Gemini model.",
+          "type": "string"
+        },
+        "aidocswriter.apiKey": {
+          "description": "Your Google Gemini API key.",
+          "type": "string"
+        }
+      },
+      "title": "Gemini Docstring Generator Configuration"
+    }
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  },
+  "description": "Generate Python docstrings using AI.",
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/node-fetch": "^2.6.9",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.9",
+    "eslint": "^8.56.0",
+    "typescript": "^5.9.2"
+  },
+  "displayName": "Gemini Docstrings Writer for Python",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/extension.js",
+  "name": "aidocswriter",
+  "publisher": "amburgao",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amburgao/aidocswriter"
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "lint": "eslint src --ext ts",
+    "pretest": "npm run compile && npm run lint",
+    "test": "vscode-test",
+    "vscode:prepublish": "npm run compile",
+    "watch": "tsc -watch -p ./"
+  },
+  "version": "0.0.1"
+}
