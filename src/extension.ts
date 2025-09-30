@@ -171,15 +171,21 @@ function getCodeToDocument(editor: vscode.TextEditor): CodeContext | null {
   if (selection.isEmpty) {
     const cursorLineNum = selection.active.line;
     let startLineNum = cursorLineNum;
+    let lastLineNum = cursorLineNum;
 
     // Find the start of the function/class definition
     while (startLineNum >= 0) {
       const lineText = doc.lineAt(startLineNum).text;
-      if (/^\s*((async)?\s*def|class)\s+/.test(lineText)) {
+      if (/^\s*((async\s)?def|class)\s+/.test(lineText)) {
         break;
+      }
+      if (! lineText.endsWith(',') && ! lineText.endsWith('):') && lineText.trim().length > 0 )  {
+            throw new Error('Could not find a definition.');
       }
       startLineNum--;
     }
+    
+
 
     if (startLineNum < 0) {
       return null; // No definition found above the cursor
