@@ -11,8 +11,8 @@ import * as vscode from 'vscode';
 import fetch, { Response } from 'node-fetch'; // Using node-fetch v2 for CommonJS compatibility
 
 // --- Constants for configuration and commands ---
-const EXTENSION_CONFIG_KEY = 'geminiDoc';
-const API_ENDPOINT_KEY = 'apiEndpoint';
+const EXTENSION_CONFIG_KEY = 'aidocswriter';
+const MODEL_KEY = 'model';
 const API_KEY_KEY = 'apiKey';
 const COMMAND_ID = 'aidocswriter.generateDocstring';
 
@@ -91,13 +91,15 @@ async function generateDocstring() {
   try {
     // 1. Get configuration
     const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_KEY);
-    const endpoint = config.get<string>(API_ENDPOINT_KEY);
+    const model = config.get<string>(MODEL_KEY);
     const apiKey = config.get<string>(API_KEY_KEY);
 
-    if (!endpoint || !apiKey) {
-      vscode.window.showErrorMessage(`Please set '${EXTENSION_CONFIG_KEY}.${API_ENDPOINT_KEY}' and '${EXTENSION_CONFIG_KEY}.${API_KEY_KEY}' in your settings.`);
+    if (!model || !apiKey) {
+      vscode.window.showErrorMessage(`Please set '${EXTENSION_CONFIG_KEY}.${MODEL_KEY}' and '${EXTENSION_CONFIG_KEY}.${API_KEY_KEY}' in your settings.`);
       return;
     }
+
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     // 2. Get the code to document from the editor
     const codeContext = getCodeToDocument(editor);
