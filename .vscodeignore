@@ -1,0 +1,25 @@
+# IDE settings
+.vscode/
+
+# Build/test/output
+out/test/**
+.vscode-test.mjs
+
+# Dependencies (bundled only if you’re not using webpack)
+# Example projects / assets not required in production
+example_py_project/
+
+
+# Config and project files not needed in the extension
+.gitignore
+.yarnrc
+yarn.lock
+eslint.config.mjs
+tsconfig.json
+vsc-extension-quickstart.md
+
+# Local packaged files
+*.vsix
+.mypy_cache
+src
+out/*.map
