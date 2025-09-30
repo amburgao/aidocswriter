@@ -173,7 +173,7 @@ function getCodeToDocument(editor: vscode.TextEditor): CodeContext | null {
     // Find the start of the function/class definition
     while (startLineNum >= 0) {
       const lineText = doc.lineAt(startLineNum).text;
-      if (/^\s*(def|class)\s+/.test(lineText)) {
+      if (/^\s*((async)?\s*def|class)\s+/.test(lineText)) {
         break;
       }
       startLineNum--;
