@@ -78,6 +78,10 @@ const EXTENSION_CONFIG_KEY = 'aidocswriter';
 const MODEL_KEY = 'model';
 const API_KEY_KEY = 'apiKey';
 const COMMAND_ID = 'aidocswriter.generateDocstring';
+const CHANGE_MODEL_COMMAND_ID = 'aidocswriter.changeModel';
+
+let modelStatusBarItem: vscode.StatusBarItem;
+let availableModels: string[] = [];
 
 // --- Type definitions for API interaction ---
 
@@ -133,6 +137,64 @@ export function activate(context: vscode.ExtensionContext) {
   // Register the command that will trigger the docstring generation.
   const disposable = vscode.commands.registerCommand(COMMAND_ID, generateDocstring);
   context.subscriptions.push(disposable);
+
+  // Get the list of available models from package.json
+  try {
+    availableModels = context.extension.packageJSON.contributes.configuration.properties[`${EXTENSION_CONFIG_KEY}.${MODEL_KEY}`].enum;
+  } catch (error) {
+    console.error('Could not read available models from package.json', error);
+  }
+
+  // Register the command to change the model
+  context.subscriptions.push(
+    vscode.commands.registerCommand(CHANGE_MODEL_COMMAND_ID, changeModel)
+  );
+
+  // Create and show the status bar item
+  modelStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  modelStatusBarItem.command = CHANGE_MODEL_COMMAND_ID;
+  context.subscriptions.push(modelStatusBarItem);
+
+  // Update status bar item initially and on config change
+  updateStatusBar();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration(EXTENSION_CONFIG_KEY)) {
+        updateStatusBar();
+      }
+    })
+  );
+}
+
+/**
+ * Command handler for changing the AI model.
+ */
+async function changeModel() {
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_KEY);
+
+  const selectedModel = await vscode.window.showQuickPick(availableModels, {
+    placeHolder: 'Select a Gemini model',
+  });
+
+  if (selectedModel) {
+    await config.update(MODEL_KEY, selectedModel, vscode.ConfigurationTarget.Workspace);
+    vscode.window.showInformationMessage(`Switched to model: ${selectedModel}`);
+  }
+}
+
+/**
+ * Updates the status bar item with the current model.
+ */
+function updateStatusBar() {
+  const config = vscode.workspace.getConfiguration(EXTENSION_CONFIG_KEY);
+  const model = config.get<string>(MODEL_KEY);
+  if (model) {
+    modelStatusBarItem.text = `$(chip) ${model}`;
+    modelStatusBarItem.tooltip = `Gemini Model: ${model} (Click to change)`;
+    modelStatusBarItem.show();
+  } else {
+    modelStatusBarItem.hide();
+  }
 }
 
 /**
@@ -183,14 +245,19 @@ async function generateDocstring() {
       return;
     }
 
-    // 3. Build the prompt for the API
-    const prompt = buildPrompt(codeContext.code, codeContext.isModuleLevel, languageConfig);
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Window,
+      title: 'Generating docstring...',
+    }, async () => {
+      // 3. Build the prompt for the API
+      const prompt = buildPrompt(codeContext.code, codeContext.isModuleLevel, languageConfig);
 
-    // 4. Call the API to get the docstring
-    const docstring = await callGeminiAPI(endpoint, apiKey, prompt);
+      // 4. Call the API to get the docstring
+      const docstring = await callGeminiAPI(endpoint, apiKey, prompt);
 
-    // 5. Insert the docstring into the editor
-    await insertDocstring(editor, docstring, codeContext, languageConfig);
+      // 5. Insert the docstring into the editor
+      await insertDocstring(editor, docstring, codeContext, languageConfig);
+    });
 
     vscode.window.showInformationMessage('Docstring generated successfully!');
   } catch (error) {

@@ -1,6 +1,7 @@
 {
   "activationEvents": [
-    "onLanguage:python"
+    "onLanguage:python",
+    "onLanguage:powershell"
   ],
   "categories": [
     "Programming Languages",
@@ -10,7 +11,11 @@
     "commands": [
       {
         "command": "aidocswriter.generateDocstring",
-        "title": "Python Docstring AI: Generate Docstring"
+        "title": "Gemini Docstrings: Generate Docstring"
+      },
+      {
+        "command": "aidocswriter.changeModel",
+        "title": "Gemini Docstrings: Change Model"
       }
     ],
     "configuration": {
@@ -38,7 +43,7 @@
   "dependencies": {
     "node-fetch": "^2.7.0"
   },
-  "description": "Generate Python docstrings using AI.",
+  "description": "Generate docstrings using AI for multiple languages.",
   "devDependencies": {
     "@types/node": "^18.x",
     "@types/node-fetch": "^2.6.9",
@@ -50,7 +55,7 @@
     "eslint": "^8.56.0",
     "typescript": "^5.9.2"
   },
-  "displayName": "Gemini Docstrings Writer for Python",
+  "displayName": "Gemini Docstrings Writer",
   "engines": {
     "vscode": "^1.85.0"
   },
