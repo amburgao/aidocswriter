@@ -10,6 +10,69 @@
 import * as vscode from 'vscode';
 import fetch, { Response } from 'node-fetch'; // Using node-fetch v2 for CommonJS compatibility
 
+// --- Language-specific configurations ---
+
+/**
+ * Defines the configuration for a specific language.
+ */
+interface LanguageConfig {
+  languageIds: string[];
+  definitionKeywords: RegExp;
+  commentStyle: {
+    start: string;
+    end: string;
+    linePrefix?: string;
+  };
+  promptSettings: {
+    subject: string;
+    style: string;
+    rules: string[];
+    emptyCodeResponse: string;
+  };
+}
+
+/**
+ * A map of language configurations, keyed by a representative language ID.
+ */
+const LANGUAGE_CONFIGS: Map<string, LanguageConfig> = new Map([
+  ['python', {
+    languageIds: ['python'],
+    definitionKeywords: /^\s*((async\s)?def|class)\s+/,
+    commentStyle: {
+      start: '"""',
+      end: '"""',
+    },
+    promptSettings: {
+      subject: 'function or class',
+      style: "Google's style for Python docstrings",
+      rules: [
+        'Use triple quotes.',
+        'Do not exceed 88 characters per line, including indentation.',
+      ],
+      emptyCodeResponse: 'Generic __init__.py.',
+    },
+  }],
+  ['powershell', {
+    languageIds: ['powershell'],
+    definitionKeywords: /^\s*(function|filter|workflow|configuration)\s+([a-zA-Z0-9_-]+)(?:\s*\(.*?\))?\s*/i,
+    commentStyle: {
+      start: '<#',
+      end: '#>',
+      linePrefix: '  ',
+    },
+    promptSettings: {
+      subject: 'function',
+      style: 'PowerShell comment-based help',
+      rules: [
+        'Use <# and #> block comment.',
+        'Include .SYNOPSIS, .DESCRIPTION, .PARAMETER, .EXAMPLE, and .NOTES sections.',
+        'Block MUST have ONLY one <#, at the start, and ONLY one #>, at the end.'
+      ],
+      emptyCodeResponse: '.SYNOPSIS\n  A brief summary of the function.',
+    },
+  }],
+]);
+
 // --- Constants for configuration and commands ---
 const EXTENSION_CONFIG_KEY = 'aidocswriter';
 const MODEL_KEY = 'model';
@@ -83,8 +146,13 @@ async function generateDocstring() {
     return;
   }
 
-  if (editor.document.languageId !== 'python') {
-    vscode.window.showWarningMessage('This command is intended for Python files.');
+  const languageId = editor.document.languageId;
+  const languageConfig = Array.from(LANGUAGE_CONFIGS.values()).find(config =>
+    config.languageIds.includes(languageId)
+  );
+
+  if (!languageConfig) {
+    vscode.window.showWarningMessage(`Docstring generation is not supported for '${languageId}' files.`);
     return;
   }
 
@@ -102,7 +170,7 @@ async function generateDocstring() {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     // 2. Get the code to document from the editor
-    const codeContext = getCodeToDocument(editor);
+    const codeContext = getCodeToDocument(editor, languageConfig);
     if (!codeContext) {
       vscode.window.showErrorMessage('Could not determine the code to document. Please select a function/class or place your cursor inside one.');
       return;
@@ -110,19 +178,19 @@ async function generateDocstring() {
 
     // If the file is empty and it's a module-level docstring, return the hardcoded docstring.
     if (editor.document.getText().trim() === '' && codeContext.isModuleLevel) {
-      await insertDocstring(editor, '"""Generic __init__.py."""', codeContext);
+      await insertDocstring(editor, languageConfig.promptSettings.emptyCodeResponse, codeContext, languageConfig);
       vscode.window.showInformationMessage('Docstring generated successfully!');
       return;
     }
 
     // 3. Build the prompt for the API
-    const prompt = buildPrompt(codeContext.code, codeContext.isModuleLevel);
+    const prompt = buildPrompt(codeContext.code, codeContext.isModuleLevel, languageConfig);
 
     // 4. Call the API to get the docstring
     const docstring = await callGeminiAPI(endpoint, apiKey, prompt);
 
     // 5. Insert the docstring into the editor
-    await insertDocstring(editor, docstring, codeContext);
+    await insertDocstring(editor, docstring, codeContext, languageConfig);
 
     vscode.window.showInformationMessage('Docstring generated successfully!');
   } catch (error) {
@@ -133,12 +201,27 @@ async function generateDocstring() {
 }
 
 /**
+ * Gets the language configuration for the given language ID.
+ * @param languageId The language ID to look up.
+ * @returns The LanguageConfig object for the language, or undefined if not found.
+ */
+function getLanguageConfig(languageId: string): LanguageConfig | undefined {
+  for (const config of LANGUAGE_CONFIGS.values()) {
+    if (config.languageIds.includes(languageId)) {
+      return config;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Determines the relevant code block (module, function, or class) to document
  * based on the user's cursor position or selection.
  * @param editor The active text editor.
+ * @param languageConfig The configuration for the current language.
  * @returns A CodeContext object or null if no valid code block is found.
  */
-function getCodeToDocument(editor: vscode.TextEditor): CodeContext | null {
+function getCodeToDocument(editor: vscode.TextEditor, languageConfig: LanguageConfig): CodeContext | null {
   const doc = editor.document;
   const selection = editor.selection;
 
@@ -176,10 +259,10 @@ function getCodeToDocument(editor: vscode.TextEditor): CodeContext | null {
     // Find the start of the function/class definition
     while (startLineNum >= 0) {
       const lineText = doc.lineAt(startLineNum).text;
-      if (/^\s*((async\s)?def|class)\s+/.test(lineText)) {
+      if (languageConfig.definitionKeywords.test(lineText)) {
         break;
       }
-      if (! lineText.endsWith(',') && ! lineText.endsWith('):') && lineText.trim().length > 0 )  {
+      if (! lineText.endsWith(',') && ! lineText.endsWith(':') && lineText.trim().length > 0 )  {
             throw new Error('Could not find a definition.');
       }
       startLineNum--;
@@ -225,30 +308,46 @@ function getCodeToDocument(editor: vscode.TextEditor): CodeContext | null {
  * @param docstring The docstring to insert.
  * @param context The context of the code being documented.
  */
-async function insertDocstring(editor: vscode.TextEditor, docstring: string, context: CodeContext) {
+async function insertDocstring(editor: vscode.TextEditor, docstring: string, context: CodeContext, languageConfig: LanguageConfig) {
   await editor.edit(editBuilder => {
     if (context.isModuleLevel) {
       // For module-level, insert after shebang or at the top
       const firstLine = editor.document.lineAt(0).text;
       const insertLine = firstLine.startsWith('#!') ? 1 : 0;
       const insertPos = new vscode.Position(insertLine, 0);
-      editBuilder.insert(insertPos, `${docstring}\n\n`);
+      editBuilder.insert(insertPos, `${languageConfig.commentStyle.start}\n${docstring}\n${languageConfig.commentStyle.end}\n\n`);
     } else {
       // For functions/classes, find the end of the signature to insert after
       let signatureEndLine = context.definitionLine;
-      while (
-        signatureEndLine < editor.document.lineCount - 1 &&
-        !editor.document.lineAt(signatureEndLine).text.includes(':')
-      ) {
-        signatureEndLine++;
+
+      // Determine the end of the signature based on language
+      if (languageConfig.languageIds.includes('python')) {
+        while (
+          signatureEndLine < editor.document.lineCount - 1 &&
+          !editor.document.lineAt(signatureEndLine).text.includes(':')
+        ) {
+          signatureEndLine++;
+        }
+      } else if (languageConfig.languageIds.includes('powershell')) {
+        while (
+          signatureEndLine < editor.document.lineCount - 1 &&
+          !editor.document.lineAt(signatureEndLine).text.includes('{')
+        ) {
+          signatureEndLine++;
+        }
       }
 
       const insertPos = new vscode.Position(signatureEndLine + 1, 0);
       const bodyIndent = context.indentation + '    '; // Standard 4-space indent
-      const indentedDocstring = docstring
-        .split(/\r?\n/)
-        .map(line => (line.trim() === '' ? '' : bodyIndent + line))
-        .join('\n') + '\n';
+      const commentLinePrefix = languageConfig.commentStyle.linePrefix || '';
+
+      const indentedDocstring = 
+        `${bodyIndent}${languageConfig.commentStyle.start}\n` +
+        docstring
+          .split(/\r?\n/)
+          .map(line => (line.trim() === '' ? '' : `${bodyIndent}${commentLinePrefix}${line}`))
+          .join('\n') +
+        `\n${bodyIndent}${languageConfig.commentStyle.end}\n\n`;
 
       editBuilder.insert(insertPos, indentedDocstring);
     }
@@ -261,20 +360,22 @@ async function insertDocstring(editor: vscode.TextEditor, docstring: string, con
  * @param isModuleLevel Whether the code is a module.
  * @returns The formatted prompt string.
  */
-function buildPrompt(code: string, isModuleLevel: boolean): string {
-  const subject = isModuleLevel ? 'module' : 'function or class';
-  return `Write a Python docstring for the following ${subject}.
-- Use triple quotes.
-- Follow Google's style for Python docstrings.
-- Do not exceed 88 characters per line, including indentation.
+function buildPrompt(code: string, isModuleLevel: boolean, languageConfig: LanguageConfig): string {
+  const subject = isModuleLevel ? 'module' : languageConfig.promptSettings.subject;
+  const style = languageConfig.promptSettings.style;
+  const rules = languageConfig.promptSettings.rules.map(rule => `- ${rule}`).join('\n');
+  const emptyCodeResponseRule = languageConfig.promptSettings.emptyCodeResponse;
+
+  return `Write a ${languageConfig.languageIds[0]} docstring for the following ${subject}.
+- Use ${style}.
+${rules}
 
 ${isModuleLevel ? 'Module' : 'Function/class'} code:
 ${code}
 
-- If there is no code provided above, the docstring MUST be 'Generic __init__.py.', a single line, without description, nor summary.
-- The above rule is important, if no code, the docstring MUST be, only, really, ONLY 'Generic __init__.py.' triple quoted.
+- If there is no code provided above, the docstring content MUST be '${emptyCodeResponseRule}'.
 
-Output only the docstring including the triple quotes.`;
+Output only the docstring content, not including the comment markers. CRITICALLY IMPORTANT: Do NOT repeat the original code in your response.`;
 }
 
 /**
@@ -313,8 +414,28 @@ async function callGeminiAPI(endpoint: string, apiKey: string, prompt: string): 
     throw new Error('Unexpected API response format. Could not extract docstring.');
   }
 
-  // Clean up markdown fences that the model might add
-  return docstring.replace(/```(?:python\s*)?/g, '').trim();
+  // Clean up markdown fences and comment markers that the model might add
+  let cleanedDocstring = docstring.replace(/```(?:python|powershell)\s*|```/g, '').trim();
+
+  if (cleanedDocstring.startsWith('"""') && cleanedDocstring.endsWith('"""')) {
+    cleanedDocstring = cleanedDocstring.substring(3, cleanedDocstring.length - 3).trim();
+  }
+
+  // For PowerShell, the model is more likely to add extra content.
+  // 1. Remove the leading comment marker if it exists.
+  if (cleanedDocstring.startsWith('<#')) {
+    cleanedDocstring = cleanedDocstring.substring(2).trim();
+  }
+
+  // 2. Find the last closing comment marker and truncate everything after it.
+  // This helps remove duplicated code that the model might append.
+  const lastClosingIndex = cleanedDocstring.lastIndexOf('#>');
+  if (lastClosingIndex !== -1) {
+    cleanedDocstring = cleanedDocstring.substring(0, lastClosingIndex).trim();
+  }
+
+
+  return cleanedDocstring;
 }
 
 /**
