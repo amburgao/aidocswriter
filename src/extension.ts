@@ -389,10 +389,21 @@ async function insertDocstring(editor: vscode.TextEditor, docstring: string, con
 
       // Determine the end of the signature based on language
       if (languageConfig.languageIds.includes('python')) {
+        let parenCount = 0;
         while (
-          signatureEndLine < editor.document.lineCount - 1 &&
-          !editor.document.lineAt(signatureEndLine).text.includes(':')
+          signatureEndLine < editor.document.lineCount - 1
         ) {
+          const lineText = editor.document.lineAt(signatureEndLine).text;
+          for (const char of lineText) {
+            if (char === '(') {
+              parenCount++;
+            } else if (char === ')') {
+              parenCount--;
+            }
+          }
+          if (parenCount === 0 && lineText.includes(':')) {
+            break;
+          }
           signatureEndLine++;
         }
       } else if (languageConfig.languageIds.includes('powershell')) {
