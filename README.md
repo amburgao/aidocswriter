@@ -2,7 +2,7 @@
 
 Generate high-quality, context-aware docstrings for your code in multiple languages using Google's Gemini models, right within VS Code.
 
-![Demo](https://raw.githubusercontent.com/amburgao/aidocswriter/main/assets/demo.gif)
+![Demo](https://raw.githubusercontent.com/amburgao/aidocswriter/master/assets/demo.gif)
 
 ## Features
 
